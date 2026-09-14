@@ -1,0 +1,20 @@
+{
+  "name": "Klima-Rezepte — CO2-arme Mahlzeiten generieren",
+  "short_name": "Klima-Rezepte",
+  "description": "Generiert klimafreundliche Rezepte auf Basis von CO2-Fußabdruck-Daten und deckt dabei den wöchentlichen Nährstoffbedarf.",
+  "version": "0.1",
+  "id": "/klima-rezepte/",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "lang": "de",
+  "background_color": "#1E293B",
+  "theme_color": "#1E293B",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

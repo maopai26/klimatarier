@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Klima-Rezepte — CO2-arme Mahlzeiten generieren</title>
+<meta name="description" content="Generiert klimafreundliche Rezepte auf Basis von CO2-Fußabdruck-Daten und deckt dabei den wöchentlichen Nährstoffbedarf.">
+
+<meta name="theme-color" content="#1E293B">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Klima-Rezepte">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="app-head">
+  <div class="wrap head-row">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">🌱</span>
+      <span class="brand-name">Klima-Rezepte</span>
+    </div>
+    <button type="button" class="icon-btn" id="settings-btn" aria-label="Grundeinstellungen">⚙</button>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ EINSTELLUNGEN ============ -->
+  <section class="view" id="view-settings" hidden>
+    <h1 class="view-title">Grundeinstellungen</h1>
+
+    <div class="panel">
+      <h2 class="panel-title">Haushalt</h2>
+      <label class="field-label" for="inp-personen">Anzahl teilnehmender Personen</label>
+      <input type="number" id="inp-personen" min="1" max="12" value="2" class="text-input">
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">Ernährungsweise</h2>
+      <div class="chips" id="diet-chips" role="group" aria-label="Ernährungsweise"></div>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">Weitere Vorlieben &amp; Unverträglichkeiten</h2>
+      <p class="hint">Frei formulierbar, z. B. „mag gerne Fisch“, „keine Nüsse (Allergie)“, „mag es scharf“, „keine Pilze“.</p>
+      <textarea id="inp-freitext" class="text-area" rows="3" placeholder="z. B. Laktoseintoleranz, mag kein Koriander, gerne mediterran…"></textarea>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">DeepSeek-Zugang</h2>
+      <p class="hint">Dein API-Schlüssel wird ausschließlich lokal in deinem Browser gespeichert (localStorage) und nur direkt an DeepSeek gesendet — nie an einen anderen Server. Kostenlos erhältlich unter platform.deepseek.com.</p>
+      <label class="field-label" for="inp-apikey">DeepSeek API-Key</label>
+      <input type="password" id="inp-apikey" class="text-input" placeholder="sk-…" autocomplete="off">
+      <label class="field-label" for="inp-model" style="margin-top:14px;">Modell</label>
+      <input type="text" id="inp-model" class="text-input" value="deepseek-chat">
+    </div>
+
+    <div class="field-actions">
+      <button type="button" class="btn-primary" id="save-settings-btn">Speichern</button>
+      <span class="save-confirm" id="save-confirm" hidden>Gespeichert ✓</span>
+    </div>
+  </section>
+
+  <!-- ============ ASSISTENT (WIZARD) ============ -->
+  <section class="view" id="view-wizard">
+    <h1 class="view-title">Neue Rezeptsuche</h1>
+
+    <div class="panel">
+      <h2 class="panel-title">1. Welche Mahlzeit?</h2>
+      <div class="chips" id="meal-chips" role="group" aria-label="Mahlzeit"></div>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">2. Kalorienlieferant</h2>
+      <p class="hint">Sortiert nach CO2-Fußabdruck je Kalorie — niedrigster zuerst.</p>
+      <select id="sel-calorie" class="text-input select-input"></select>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">3. Eiweißlieferant</h2>
+      <p class="hint">Sortiert nach CO2-Fußabdruck je Gramm Eiweiß — niedrigster zuerst.</p>
+      <select id="sel-protein" class="text-input select-input"></select>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">4. Nährstoff-Schwerpunkt</h2>
+      <p class="hint">Wähle einen lebensnotwendigen Nährstoff — die zweite Liste zeigt dann Lieferanten dafür, sortiert nach CO2-Fußabdruck.</p>
+      <select id="sel-nutrient-type" class="text-input select-input"></select>
+      <select id="sel-nutrient-source" class="text-input select-input" style="margin-top:10px;"></select>
+    </div>
+
+    <div class="field-actions">
+      <button type="button" class="btn-primary btn-large" id="generate-btn">10 klimafreundliche Rezepte generieren</button>
+    </div>
+    <p class="hint" id="saved-hint"></p>
+  </section>
+
+  <!-- ============ LADEN ============ -->
+  <section class="view" id="view-loading" hidden>
+    <div class="loading-box">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="loading-text">Frage DeepSeek nach klimafreundlichen Rezepten…</p>
+    </div>
+  </section>
+
+  <!-- ============ ERGEBNISSE ============ -->
+  <section class="view" id="view-results" hidden>
+    <div class="results-head">
+      <h1 class="view-title">Deine 10 Rezepte</h1>
+      <button type="button" class="btn-text" id="export-all-btn">Alle als PDF exportieren</button>
+    </div>
+    <p class="results-summary" id="results-summary"></p>
+    <div class="card-grid" id="results-grid"></div>
+  </section>
+
+  <!-- ============ GESPEICHERT ============ -->
+  <section class="view" id="view-saved" hidden>
+    <h1 class="view-title">Gespeicherte Rezepte</h1>
+    <p class="hint">Gespeicherte Rezepte werden bei passenden Anfragen (gleiche Mahlzeit &amp; Ernährungsweise) automatisch bevorzugt vorgeschlagen — das reduziert nach und nach die Anzahl nötiger neuer Anfragen.</p>
+    <div class="card-grid" id="saved-grid"></div>
+    <p class="hint" id="saved-empty">Noch keine Rezepte gespeichert — markiere Karten mit ♥, damit sie hier erscheinen.</p>
+  </section>
+
+  <!-- ============ FORTSCHRITT ============ -->
+  <section class="view" id="view-progress" hidden>
+    <h1 class="view-title">Nährstoff-Fortschritt</h1>
+    <p class="hint">Zeigt die aufsummierte Tagesbedarfsdeckung (0–100 %) deiner letzten 3 ausgewählten/gespeicherten Rezepte je Nährstoff.</p>
+    <div id="progress-chart"></div>
+    <p class="hint" id="progress-empty">Noch keine Rezepte ausgewählt.</p>
+  </section>
+
+</main>
+
+<nav class="bottom-nav" aria-label="Hauptnavigation">
+  <button type="button" class="nav-btn is-active" data-view="wizard"><span class="nav-icon">🔍</span>Suche</button>
+  <button type="button" class="nav-btn" data-view="results"><span class="nav-icon">📋</span>Ergebnisse</button>
+  <button type="button" class="nav-btn" data-view="saved"><span class="nav-icon">♥</span>Gespeichert</button>
+  <button type="button" class="nav-btn" data-view="progress"><span class="nav-icon">📊</span>Fortschritt</button>
+</nav>
+
+<template id="tpl-recipe-card">
+  <article class="recipe-card">
+    <div class="card-inner">
+      <div class="card-head">
+        <span class="meal-tag"></span>
+        <button type="button" class="save-btn" aria-label="Rezept speichern">♡</button>
+      </div>
+      <h3 class="card-title"></h3>
+      <p class="card-desc"></p>
+
+      <div class="card-stats">
+        <div class="stat"><span class="stat-label">kcal/Portion</span><span class="stat-value stat-kcal"></span></div>
+        <div class="stat"><span class="stat-label">CO2/Portion</span><span class="stat-value stat-co2"></span></div>
+        <div class="stat"><span class="stat-label">CO2 gesamt</span><span class="stat-value stat-co2total"></span></div>
+        <div class="stat"><span class="stat-label">Ersparnis</span><span class="stat-value stat-savings"></span></div>
+      </div>
+
+      <h4 class="card-sub">Zutaten (<span class="card-portions"></span> Portionen)</h4>
+      <ul class="ingredient-list"></ul>
+
+      <h4 class="card-sub">Zubereitung</h4>
+      <ol class="steps-list"></ol>
+
+      <h4 class="card-sub">Tagesbedarfsdeckung pro Portion</h4>
+      <div class="nutrient-bars"></div>
+
+      <div class="card-actions">
+        <button type="button" class="btn-text export-btn">Als PDF exportieren</button>
+      </div>
+    </div>
+  </article>
+</template>
+
+<footer class="app-foot">
+  <div class="wrap">
+    <p>Rezepte werden von DeepSeek generiert (Sprachmodell-Wissen, keine Live-Internetsuche) und mit der lokalen CO2-/Nährwert-Datenbank berechnet. Alle Angaben ohne Gewähr, keine medizinische Beratung.</p>
+    <p class="version">Klima-Rezepte <span id="app-version">v0.1</span></p>
+  </div>
+</footer>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("service-worker.js").catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
