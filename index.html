@@ -80,26 +80,26 @@
     </div>
 
     <div class="panel">
-      <h2 class="panel-title">2. Kalorienlieferant</h2>
+      <h2 class="panel-title">2. Zutat 1 – Energielieferant</h2>
       <p class="hint">Sortiert nach CO2-Fußabdruck je Kalorie — niedrigster zuerst.</p>
       <select id="sel-calorie" class="text-input select-input"></select>
     </div>
 
     <div class="panel">
-      <h2 class="panel-title">3. Eiweißlieferant</h2>
-      <p class="hint">Sortiert nach CO2-Fußabdruck je Gramm Eiweiß — niedrigster zuerst.</p>
+      <h2 class="panel-title">3. Zutat 2 – Eiweißlieferant</h2>
+      <p class="hint">Sortiert nach CO2-Fußabdruck je Gramm Eiweiß — niedrigster zuerst. Nur nährstoffdichte Produkte (Eiweißanteil am Tagesbedarf höher als Kalorienanteil am Tagesbedarf).</p>
       <select id="sel-protein" class="text-input select-input"></select>
     </div>
 
     <div class="panel">
-      <h2 class="panel-title">4. Nährstoff-Schwerpunkt</h2>
-      <p class="hint">Wähle einen lebensnotwendigen Nährstoff — die zweite Liste zeigt dann Lieferanten dafür, sortiert nach CO2-Fußabdruck.</p>
+      <h2 class="panel-title" id="nutrient-panel-title">4. Zutat 3 – Nährstoff-Lieferant</h2>
+      <p class="hint">Wähle zuerst einen lebensnotwendigen Nährstoff — die zweite Liste zeigt dann nährstoffdichte Lieferanten dafür, sortiert nach CO2-Fußabdruck.</p>
       <select id="sel-nutrient-type" class="text-input select-input"></select>
       <select id="sel-nutrient-source" class="text-input select-input" style="margin-top:10px;"></select>
     </div>
 
     <div class="field-actions">
-      <button type="button" class="btn-primary btn-large" id="generate-btn">10 klimafreundliche Rezepte generieren</button>
+      <button type="button" class="btn-primary btn-large" id="generate-btn">5 klimafreundliche Rezepte generieren</button>
     </div>
     <p class="hint" id="saved-hint"></p>
   </section>
@@ -115,7 +115,7 @@
   <!-- ============ ERGEBNISSE ============ -->
   <section class="view" id="view-results" hidden>
     <div class="results-head">
-      <h1 class="view-title">Deine 10 Rezepte</h1>
+      <h1 class="view-title">Deine 5 Rezepte</h1>
       <button type="button" class="btn-text" id="export-all-btn">Alle als PDF exportieren</button>
     </div>
     <p class="results-summary" id="results-summary"></p>

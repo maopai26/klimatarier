@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "0.1";
+  const APP_VERSION = "0.2";
   const LS_SETTINGS = "klimarezepte:settings:v1";
   const LS_SAVED = "klimarezepte:saved:v1";
   const LS_LAST3 = "klimarezepte:last3:v1";
@@ -167,6 +167,7 @@
   function populateNutrientSourceDropdown() {
     const sel = q("sel-nutrient-source");
     const meta = NUTRIENTS.find((n) => n.key === state.wizard.nutrientKey);
+    q("nutrient-panel-title").textContent = "4. Zutat 3 – " + meta.label + "-Lieferant";
     const list = sortedNutrientSources(state.wizard.nutrientKey).filter((x) => allowedByDiet(x.food.name, state.settings.diet));
     sel.innerHTML = "";
     list.forEach((entry) => {
@@ -267,6 +268,9 @@
       title: raw.title || "Rezept",
       beschreibung: raw.beschreibung || "",
       mahlzeit: raw.mahlzeit || state.wizard.meal,
+      zutat1: state.wizard.calorieFood,
+      zutat2: state.wizard.proteinFood,
+      zutat3: state.wizard.nutrientFood,
       zubereitung: raw.zubereitung || [],
       ingredientLines,
       personen,
@@ -286,9 +290,15 @@
   }
 
   // ---------------- Saved recipes matching ----------------
+  // Ein gespeichertes Rezept wird nur dann als Ersatz für eine neue
+  // DeepSeek-Anfrage angeboten, wenn zusätzlich zu Mahlzeit/Ernährungsweise
+  // auch Zutat 1 (Energielieferant) UND Zutat 2 (Eiweißlieferant) mit der
+  // aktuellen Auswahl übereinstimmen.
   function findMatchingSaved(mealKey, dietKey) {
     return state.saved.filter((r) => {
       if (r.mahlzeit !== mealKey) return false;
+      if (r.zutat1 !== state.wizard.calorieFood) return false;
+      if (r.zutat2 !== state.wizard.proteinFood) return false;
       if (dietKey === "vegan_nur" && !r.vegan) return false;
       if (dietKey === "vegetarisch_nur" && !r.vegetarisch) return false;
       return true;
@@ -307,13 +317,13 @@
       "AUFGABE: Erstelle " + neededCount + " unterschiedliche Rezepte für die Mahlzeit \"" + mealLabel + "\", für genau " + state.settings.personen + " Person(en) pro Rezept (Mengenangaben in Gramm für " + state.settings.personen + " Person(en) insgesamt).\n\n" +
       "ERNÄHRUNGSWEISE: " + dietLabel + (state.settings.diet.endsWith("_nur") ? " (zwingend einhalten)." : " (falls 'bevorzugt': wenn möglich einhalten, ist aber keine harte Vorgabe).") + "\n\n" +
       "WICHTIGE ZUTATEN (bitte jeweils prominent in möglichst vielen Rezepten einbauen, exakte Bezeichnung verwenden):\n" +
-      "- Kalorienlieferant mit niedrigem CO2-Fußabdruck: \"" + state.wizard.calorieFood + "\"\n" +
-      "- Eiweißlieferant mit niedrigem CO2-Fußabdruck: \"" + state.wizard.proteinFood + "\"\n" +
-      "- Guter Lieferant für " + nutrientMeta.label + " mit niedrigem CO2-Fußabdruck: \"" + state.wizard.nutrientFood + "\"\n\n" +
+      "- Zutat 1, Energielieferant mit niedrigem CO2-Fußabdruck: \"" + state.wizard.calorieFood + "\"\n" +
+      "- Zutat 2, Eiweißlieferant mit niedrigem CO2-Fußabdruck: \"" + state.wizard.proteinFood + "\"\n" +
+      "- Zutat 3, guter Lieferant für " + nutrientMeta.label + " mit niedrigem CO2-Fußabdruck: \"" + state.wizard.nutrientFood + "\"\n\n" +
       "WEITERE VORLIEBEN/UNVERTRÄGLICHKEITEN DES NUTZERS (unbedingt beachten): " + (state.settings.freitext || "keine besonderen Angaben") + "\n\n" +
       "PORTIONSGRÖSSE: 400-1000 kcal pro Person und Mahlzeit.\n" +
       "OBERGRENZEN PRO PORTION (nicht überschreiten): Fett ca. " + MEAL_MAX.fettG + " g, Zucker ca. " + MEAL_MAX.zuckerG + " g, Salz ca. " + MEAL_MAX.salzG + " g.\n\n" +
-      "ZIEL FÜR DIE GESAMTHEIT ALLER 10 REZEPTE EINER ANFRAGE (nicht nur dieses eine): zusammen mindestens den folgenden wöchentlichen Bedarf an lebensnotwendigen Vitaminen/Mineralstoffen eines durchschnittlichen Erwachsenen decken (grobe Richtwerte, D-A-CH/DGE-Orientierung):\n" +
+      "ZIEL FÜR DIE GESAMTHEIT ALLER " + RECIPE_COUNT + " REZEPTE EINER ANFRAGE (nicht nur dieses eine): zusammen mindestens den folgenden wöchentlichen Bedarf an lebensnotwendigen Vitaminen/Mineralstoffen eines durchschnittlichen Erwachsenen decken (grobe Richtwerte, D-A-CH/DGE-Orientierung):\n" +
       weeklyLines + "\n" +
       "Wähle die Zutaten so, dass unterschiedliche Rezepte unterschiedliche Nährstoffe abdecken (Abwechslung).\n" +
       (alreadyChosenTitles && alreadyChosenTitles.length ? "\nBEREITS AUSGEWÄHLTE REZEPTE (nicht wiederholen, aber bei der Nährstoff-Abdeckung mitdenken): " + alreadyChosenTitles.join("; ") + "\n" : "") +
@@ -366,8 +376,8 @@
     q("loading-text").textContent = "Prüfe gespeicherte Rezepte…";
 
     const matchingSaved = findMatchingSaved(state.wizard.meal, state.settings.diet);
-    const reuse = matchingSaved.slice(0, 10);
-    const neededCount = Math.max(0, 10 - reuse.length);
+    const reuse = matchingSaved.slice(0, RECIPE_COUNT);
+    const neededCount = Math.max(0, RECIPE_COUNT - reuse.length);
 
     let generated = [];
     try {
@@ -385,7 +395,7 @@
       return;
     }
 
-    state.results = reuse.concat(generated).slice(0, 10);
+    state.results = reuse.concat(generated).slice(0, RECIPE_COUNT);
     renderResults();
     showView("results");
   }
