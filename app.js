@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "0.2";
+  const APP_VERSION = "0.3";
   const LS_SETTINGS = "klimarezepte:settings:v1";
   const LS_SAVED = "klimarezepte:saved:v1";
   const LS_LAST3 = "klimarezepte:last3:v1";
@@ -128,7 +128,7 @@
 
   function populateCalorieDropdown() {
     const sel = q("sel-calorie");
-    const list = sortedCalorieSources().filter((x) => allowedByDiet(x.food.name, state.settings.diet));
+    const list = sortedCalorieSources().filter((x) => allowedByDiet(x.food.name, state.settings.diet) && isMainFood(x.food));
     sel.innerHTML = "";
     list.forEach((entry) => {
       const opt = document.createElement("option");
@@ -141,7 +141,7 @@
 
   function populateProteinDropdown() {
     const sel = q("sel-protein");
-    const list = sortedProteinSources().filter((x) => allowedByDiet(x.food.name, state.settings.diet));
+    const list = sortedProteinSources().filter((x) => allowedByDiet(x.food.name, state.settings.diet) && isMainFood(x.food));
     sel.innerHTML = "";
     list.forEach((entry) => {
       const opt = document.createElement("option");
@@ -168,7 +168,7 @@
     const sel = q("sel-nutrient-source");
     const meta = NUTRIENTS.find((n) => n.key === state.wizard.nutrientKey);
     q("nutrient-panel-title").textContent = "4. Zutat 3 – " + meta.label + "-Lieferant";
-    const list = sortedNutrientSources(state.wizard.nutrientKey).filter((x) => allowedByDiet(x.food.name, state.settings.diet));
+    const list = sortedNutrientSources(state.wizard.nutrientKey).filter((x) => allowedByDiet(x.food.name, state.settings.diet) && isMainFood(x.food));
     sel.innerHTML = "";
     list.forEach((entry) => {
       const opt = document.createElement("option");
@@ -229,39 +229,58 @@
   }
 
   // ---------------- Nutrition / CO2 computation for a generated recipe ----------------
-  function computeRecipe(raw, personen) {
-    let co2Total = 0, kcalTotal = 0, fettTotal = 0, kh_ = 0, eiweissTotal = 0;
-    const nutrientTotals = {};
-    NUTRIENTS.forEach((n) => { nutrientTotals[n.key] = 0; });
-    const ingredientLines = [];
-
-    (raw.zutaten || []).forEach((z) => {
-      const grams = Number(z.gramm) || 0;
-      const match = findFoodMatch(z.name || "");
-      if (match && grams > 0) {
-        const factor = grams / 100;
-        co2Total += (grams / 1000) * match.co2;
-        kcalTotal += factor * match.kcal;
-        fettTotal += factor * match.fett;
-        eiweissTotal += factor * match.eiweiss;
-        kh_ += factor * match.kh;
-        NUTRIENTS.forEach((n) => { nutrientTotals[n.key] += factor * (match[n.key] || 0); });
-        ingredientLines.push({ text: grams + " g " + z.name, matched: true });
-      } else {
-        ingredientLines.push({ text: (grams ? grams + " g " : "") + z.name, matched: false });
-      }
+  function sumTotals(list) {
+    let co2 = 0, kcal = 0, fett = 0, eiweiss = 0, kh = 0;
+    const nutrients = {};
+    NUTRIENTS.forEach((n) => { nutrients[n.key] = 0; });
+    list.forEach((it) => {
+      if (!it.match || it.grams <= 0) return;
+      const f = it.grams / 100;
+      co2 += (it.grams / 1000) * it.match.co2;
+      kcal += f * it.match.kcal;
+      fett += f * it.match.fett;
+      eiweiss += f * it.match.eiweiss;
+      kh += f * it.match.kh;
+      NUTRIENTS.forEach((n) => { nutrients[n.key] += f * (it.match[n.key] || 0); });
     });
+    return { co2, kcal, fett, eiweiss, kh, nutrients };
+  }
 
-    const co2PerPortion = co2Total / personen;
-    const kcalPerPortion = kcalTotal / personen;
-    const savingsKg = Math.max(0, AVERAGE_MEAL_CO2_KG * personen - co2Total);
+  // Gramm-Zielwert, den eine Zutat pro PORTION erreichen müsste, um allein
+  // 50% des Tagesbedarfs von Eiweiß bzw. des gewählten Nährstoffs zu
+  // decken. Wird VOR der DeepSeek-Anfrage berechnet und der KI als
+  // konkrete Zahl mitgegeben (gezielte Rezeptsuche), NICHT nachträglich
+  // am Ergebnis verändert.
+  function targetGramsPerPortion(foodName, nutrientKey, isProtein) {
+    const food = FOODS.find((f) => f.name === foodName);
+    if (!food) return null;
+    const dailyRef = isProtein ? EU_REF_PROTEIN_G : NUTRIENTS.find((n) => n.key === nutrientKey).dailyRef;
+    const perGram = isProtein ? food.eiweiss / 100 : (food[nutrientKey] || 0) / 100;
+    if (!perGram) return null;
+    return (0.5 * dailyRef) / perGram;
+  }
+
+  function computeRecipe(raw, personen) {
+    const resolved = (raw.zutaten || []).map((z) => ({
+      name: z.name || "", grams: Number(z.gramm) || 0, match: findFoodMatch(z.name || ""),
+    }));
+
+    const t = sumTotals(resolved);
+    const ingredientLines = resolved.map((it) => ({
+      text: (it.grams ? it.grams + " g " : "") + it.name,
+      matched: !!it.match,
+    }));
+
+    const co2PerPortion = t.co2 / personen;
+    const kcalPerPortion = t.kcal / personen;
+    const savingsKg = Math.max(0, AVERAGE_MEAL_CO2_KG * personen - t.co2);
     const kmEquivalent = (savingsKg * 1000) / CAR_G_CO2_PER_KM;
 
     const nutrientPctPerPortion = {};
     NUTRIENTS.forEach((n) => {
-      const perPortion = nutrientTotals[n.key] / personen;
-      nutrientPctPerPortion[n.key] = Math.min(999, (perPortion / n.dailyRef) * 100);
+      nutrientPctPerPortion[n.key] = Math.min(999, ((t.nutrients[n.key] / personen) / n.dailyRef) * 100);
     });
+    const proteinPctPerPortion = Math.min(999, ((t.eiweiss / personen) / EU_REF_PROTEIN_G) * 100);
 
     return {
       id: "r_" + Math.random().toString(36).slice(2, 10),
@@ -274,18 +293,13 @@
       zubereitung: raw.zubereitung || [],
       ingredientLines,
       personen,
-      co2Total: co2Total, co2PerPortion: co2PerPortion, kcalTotal: kcalTotal, kcalPerPortion: kcalPerPortion,
-      fettTotal: fettTotal, eiweissTotal: eiweissTotal, khTotal: kh_,
+      co2Total: t.co2, co2PerPortion: co2PerPortion, kcalTotal: t.kcal, kcalPerPortion: kcalPerPortion,
+      fettTotal: t.fett, eiweissTotal: t.eiweiss, khTotal: t.kh,
+      proteinPctPerPortion: proteinPctPerPortion,
       savingsKg: savingsKg, kmEquivalent: kmEquivalent,
-      nutrientTotals: nutrientTotals, perPortion: nutrientPctPerPortion,
-      vegan: (raw.zutaten || []).every((z) => {
-        const m = findFoodMatch(z.name || "");
-        return !m || animalCategory(m.name) === "vegan";
-      }),
-      vegetarisch: (raw.zutaten || []).every((z) => {
-        const m = findFoodMatch(z.name || "");
-        return !m || animalCategory(m.name) !== "tierisch";
-      }),
+      nutrientTotals: t.nutrients, perPortion: nutrientPctPerPortion,
+      vegan: resolved.every((it) => !it.match || animalCategory(it.match.name) === "vegan"),
+      vegetarisch: resolved.every((it) => !it.match || animalCategory(it.match.name) !== "tierisch"),
     };
   }
 
@@ -310,16 +324,27 @@
     const mealLabel = MEAL_TYPES.find((m) => m.key === state.wizard.meal).label;
     const nutrientMeta = NUTRIENTS.find((n) => n.key === state.wizard.nutrientKey);
     const dietLabel = DIET_MODES.find((d) => d.key === state.settings.diet).label;
-
     const weeklyLines = NUTRIENTS.map((n) => "- " + n.label + ": " + (n.dailyRef * 7) + " " + n.unit + " / Woche (Richtwert)").join("\n");
+
+    // Konkrete Gramm-Zielwerte für Zutat 2 & 3, damit DeepSeek GEZIELT nach
+    // Rezepten mit passenden Mengenverhältnissen sucht, statt dass die App
+    // das Ergebnis nachträglich korrigiert.
+    const proteinTargetG = targetGramsPerPortion(state.wizard.proteinFood, "eiweiss", true);
+    const nutrientTargetG = targetGramsPerPortion(state.wizard.nutrientFood, state.wizard.nutrientKey, false);
+    const proteinTargetLine = proteinTargetG
+      ? "- Zutat 2, Eiweißlieferant \"" + state.wizard.proteinFood + "\": plane pro PORTION (pro Person) mit ca. " + Math.round(proteinTargetG) + " g dieser Zutat — das deckt bei diesem Lebensmittel allein schon ca. 50% des Tagesbedarfs an Eiweiß (Referenz: " + EU_REF_PROTEIN_G + " g/Tag). Mehr ist in Ordnung, deutlich weniger nicht.\n"
+      : "- Zutat 2, Eiweißlieferant mit niedrigem CO2-Fußabdruck: \"" + state.wizard.proteinFood + "\"\n";
+    const nutrientTargetLine = nutrientTargetG
+      ? "- Zutat 3, " + nutrientMeta.label + "-Lieferant \"" + state.wizard.nutrientFood + "\": plane pro PORTION (pro Person) mit ca. " + Math.round(nutrientTargetG) + " g dieser Zutat — das deckt bei diesem Lebensmittel allein schon ca. 50% des Tagesbedarfs an " + nutrientMeta.label + " (Referenz: " + nutrientMeta.dailyRef + " " + nutrientMeta.unit + "/Tag). Mehr ist in Ordnung, deutlich weniger nicht.\n"
+      : "- Zutat 3, guter Lieferant für " + nutrientMeta.label + " mit niedrigem CO2-Fußabdruck: \"" + state.wizard.nutrientFood + "\"\n";
 
     return "Du bist ein Ernährungs- und Kochexperte, spezialisiert auf klimafreundliche, alltagstaugliche Küche in Deutschland.\n\n" +
       "AUFGABE: Erstelle " + neededCount + " unterschiedliche Rezepte für die Mahlzeit \"" + mealLabel + "\", für genau " + state.settings.personen + " Person(en) pro Rezept (Mengenangaben in Gramm für " + state.settings.personen + " Person(en) insgesamt).\n\n" +
       "ERNÄHRUNGSWEISE: " + dietLabel + (state.settings.diet.endsWith("_nur") ? " (zwingend einhalten)." : " (falls 'bevorzugt': wenn möglich einhalten, ist aber keine harte Vorgabe).") + "\n\n" +
-      "WICHTIGE ZUTATEN (bitte jeweils prominent in möglichst vielen Rezepten einbauen, exakte Bezeichnung verwenden):\n" +
-      "- Zutat 1, Energielieferant mit niedrigem CO2-Fußabdruck: \"" + state.wizard.calorieFood + "\"\n" +
-      "- Zutat 2, Eiweißlieferant mit niedrigem CO2-Fußabdruck: \"" + state.wizard.proteinFood + "\"\n" +
-      "- Zutat 3, guter Lieferant für " + nutrientMeta.label + " mit niedrigem CO2-Fußabdruck: \"" + state.wizard.nutrientFood + "\"\n\n" +
+      "WICHTIGE ZUTATEN MIT MENGENVORGABEN (bitte in jedem Rezept einbauen, exakte Bezeichnung beibehalten; die Gramm-Angaben unten sind eine GEZIELTE Vorgabe für die Rezeptsuche, kein grober Richtwert — suche/entwerfe Rezepte, die diese Mengen bereits von sich aus enthalten):\n" +
+      "- Zutat 1, Energielieferant mit niedrigem CO2-Fußabdruck: \"" + state.wizard.calorieFood + "\" (Menge nach Rezeptbedarf).\n" +
+      proteinTargetLine +
+      nutrientTargetLine + "\n" +
       "WEITERE VORLIEBEN/UNVERTRÄGLICHKEITEN DES NUTZERS (unbedingt beachten): " + (state.settings.freitext || "keine besonderen Angaben") + "\n\n" +
       "PORTIONSGRÖSSE: 400-1000 kcal pro Person und Mahlzeit.\n" +
       "OBERGRENZEN PRO PORTION (nicht überschreiten): Fett ca. " + MEAL_MAX.fettG + " g, Zucker ca. " + MEAL_MAX.zuckerG + " g, Salz ca. " + MEAL_MAX.salzG + " g.\n\n" +
@@ -327,7 +352,7 @@
       weeklyLines + "\n" +
       "Wähle die Zutaten so, dass unterschiedliche Rezepte unterschiedliche Nährstoffe abdecken (Abwechslung).\n" +
       (alreadyChosenTitles && alreadyChosenTitles.length ? "\nBEREITS AUSGEWÄHLTE REZEPTE (nicht wiederholen, aber bei der Nährstoff-Abdeckung mitdenken): " + alreadyChosenTitles.join("; ") + "\n" : "") +
-      "\nWICHTIG ZU ZUTATEN-NAMEN: Verwende für Zutaten möglichst einfache, gängige deutsche Bezeichnungen (z.B. \"Zwiebeln\", \"Tomaten\", \"Kartoffeln\", \"Haferflocken\"), keine Markennamen, keine ausgefallenen Spezialzutaten.\n\n" +
+      "\nWICHTIG ZU ZUTATEN-NAMEN: Verwende für Zutaten möglichst einfache, gängige deutsche Bezeichnungen (z.B. \"Zwiebeln\", \"Tomaten\", \"Kartoffeln\", \"Haferflocken\"), keine Markennamen, keine ausgefallenen Spezialzutaten. Gewürze/Kräuter dürfen zum Würzen verwendet werden, zählen aber nicht als Hauptzutat.\n\n" +
       "ANTWORTFORMAT: Antworte AUSSCHLIESSLICH mit einem JSON-Objekt (kein Fließtext davor/danach) exakt in dieser Struktur:\n" +
       '{"rezepte": [{"title": "Name des Gerichts", "beschreibung": "1-2 Sätze Beschreibung", "zutaten": [{"name": "Zutat", "gramm": 200}], "zubereitung": ["Schritt 1...", "Schritt 2..."]}]}';
   }
@@ -531,7 +556,18 @@
     q("settings-btn").addEventListener("click", () => showView("settings"));
   }
 
-  function init() {
+  async function init() {
+    showView("loading");
+    q("loading-text").textContent = "Lade Lebensmitteldatenbank aus CO2-Rucksack-Lebensmittel.xlsx…";
+    try {
+      await loadFoodsFromExcel();
+    } catch (err) {
+      q("loading-text").textContent =
+        "Fehler beim Laden der Lebensmitteldatenbank: " + err.message +
+        " Bitte Seite neu laden, sobald das Problem behoben ist.";
+      return; // App ohne Datenbank nicht sinnvoll nutzbar
+    }
+
     loadSettings();
     loadSaved();
 

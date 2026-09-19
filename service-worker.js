@@ -1,4 +1,4 @@
-const CACHE_NAME = "klimarezepte-shell-v1";
+const CACHE_NAME = "klimarezepte-shell-v2";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -6,6 +6,7 @@ const CORE_ASSETS = [
   "./app.js",
   "./data.js",
   "./manifest.json",
+  "./CO2-Rucksack-Lebensmittel.xlsx",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
 ];
