@@ -2,7 +2,7 @@
   "name": "Klima-Rezepte — CO2-arme Mahlzeiten generieren",
   "short_name": "Klima-Rezepte",
   "description": "Generiert klimafreundliche Rezepte auf Basis von CO2-Fußabdruck-Daten und deckt dabei den wöchentlichen Nährstoffbedarf.",
-  "version": "0.3",
+  "version": "0.4",
   "id": "/klima-rezepte/",
   "start_url": "./index.html",
   "scope": "./",

@@ -21,11 +21,12 @@ const EXCEL_SHEET = "Rohdaten";
 // 0-basierte Spaltenindizes im Blatt "Rohdaten":
 // A=0 Lebensmittel, B=1 Quelle, C=2 CO2 DE/Basis, D=3 CO2 global,
 // E=4 Saison, F=5 Hinweis, G=6 kcal, H=7 Fett, I=8 Eiweiß, J=9 KH,
-// K..Z=10..25 die 16 Nährstoffe in dieser Reihenfolge:
+// K..Z=10..25 die 16 Nährstoffe in dieser Reihenfolge, AA=26 Zucker:
 const EXCEL_NUTRIENT_COLUMN_ORDER = [
   "vitA", "vitC", "vitD", "vitE", "vitK", "b1", "b2", "niacin",
   "b6", "folat", "b12", "ca", "fe", "mg", "zn", "k",
 ];
+const EXCEL_ZUCKER_COLUMN = 26; // Spalte AA
 
 async function loadFoodsFromExcel() {
   const res = await fetch(EXCEL_FILE);
@@ -57,6 +58,7 @@ async function loadFoodsFromExcel() {
       fett: Number(r[7]) || 0,
       eiweiss: Number(r[8]) || 0,
       kh: Number(r[9]) || 0,
+      zucker: Number(r[EXCEL_ZUCKER_COLUMN]) || 0,
     };
     EXCEL_NUTRIENT_COLUMN_ORDER.forEach((key, idx) => {
       food[key] = Number(r[10 + idx]) || 0;
@@ -117,6 +119,15 @@ const MEAL_MAX = { fettG: 27, zuckerG: 17, salzG: 2 };
    den Nährstoffdichte-Filter bei Zutat 2/3 verwendet (siehe unten). */
 const EU_REF_KCAL = 2000;
 const EU_REF_PROTEIN_G = 50;
+/* Weitere EU-Referenzmengen (Nährwertkennzeichnung): Fett 70 g/Tag,
+   Zucker 90 g/Tag — werden für den Zutat-1-Filter (siehe unten)
+   verwendet. */
+const EU_REF_FETT_G = 70;
+const EU_REF_ZUCKER_G = 90;
+/* Faktor, um den der Nährstoffanteil am Tagesbedarf höher sein muss als
+   der Kalorienanteil am Tagesbedarf, damit ein Lebensmittel bei Zutat 2/3
+   als ausreichend nährstoffdicht gilt. */
+const NUTRIENT_DENSITY_FACTOR = 2;
 
 /* Anzahl der je Anfrage generierten Rezepte. */
 const RECIPE_COUNT = 5;
@@ -166,13 +177,26 @@ function nutrientPct100g(food, key) {
 function isNutrientDense(food, key) {
   if (!food.kcal || food.kcal <= 0) return false; // 0-kcal-Lebensmittel (Wasser, Salz) ausschließen
   const nutrientShare = key === "eiweiss" ? proteinPct100g(food) : nutrientPct100g(food, key);
-  return nutrientShare > kcalPct100g(food);
+  return nutrientShare >= NUTRIENT_DENSITY_FACTOR * kcalPct100g(food);
+}
+
+/* Zutat-1-Kriterium: Würde der GESAMTE Tages-Kalorienbedarf (EU_REF_KCAL)
+   ausschließlich über dieses eine Lebensmittel gedeckt, dürfen die dabei
+   anfallenden Mengen an Fett und Zucker die empfohlenen Tages-Höchstmengen
+   (EU-Referenzmengen) nicht überschreiten. Filtert z.B. sehr fett- oder
+   zuckerreiche, aber kalorisch "günstige" CO2-Lieferanten heraus. */
+function isFettZuckerSafe(food) {
+  if (!food.kcal || food.kcal <= 0) return false;
+  const gramsForFullDay = (EU_REF_KCAL / food.kcal) * 100;
+  const fettAtFullDay = (food.fett || 0) * (gramsForFullDay / 100);
+  const zuckerAtFullDay = (food.zucker || 0) * (gramsForFullDay / 100);
+  return fettAtFullDay <= EU_REF_FETT_G && zuckerAtFullDay <= EU_REF_ZUCKER_G;
 }
 
 /* Sortierte Listen für die Dropdowns (aufsteigend nach spezifischem CO2). */
 function sortedCalorieSources() {
   return FOODS.map((f) => ({ food: f, value: co2PerKcal(f) }))
-    .filter((x) => x.value !== null)
+    .filter((x) => x.value !== null && isFettZuckerSafe(x.food))
     .sort((a, b) => a.value - b.value);
 }
 function sortedProteinSources() {

@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "0.3";
+  const APP_VERSION = "0.4";
   const LS_SETTINGS = "klimarezepte:settings:v1";
   const LS_SAVED = "klimarezepte:saved:v1";
   const LS_LAST3 = "klimarezepte:last3:v1";
@@ -346,7 +346,8 @@
       proteinTargetLine +
       nutrientTargetLine + "\n" +
       "WEITERE VORLIEBEN/UNVERTRÄGLICHKEITEN DES NUTZERS (unbedingt beachten): " + (state.settings.freitext || "keine besonderen Angaben") + "\n\n" +
-      "PORTIONSGRÖSSE: 400-1000 kcal pro Person und Mahlzeit.\n" +
+      "PORTIONSGRÖSSE: mindestens 400, höchstens 800 kcal pro Person und Mahlzeit (800 kcal ist eine harte Obergrenze, nicht überschreiten).\n" +
+      "MENGEN: Verwende ausschließlich übliche, im Haushalt realistische Zutatenmengen (wie in einem normalen Kochrezept für " + state.settings.personen + " Person(en)) — keine ungewöhnlich großen oder kleinen Mengen, auch nicht um die Mengenvorgaben zu Zutat 2/3 zu erfüllen.\n" +
       "OBERGRENZEN PRO PORTION (nicht überschreiten): Fett ca. " + MEAL_MAX.fettG + " g, Zucker ca. " + MEAL_MAX.zuckerG + " g, Salz ca. " + MEAL_MAX.salzG + " g.\n\n" +
       "ZIEL FÜR DIE GESAMTHEIT ALLER " + RECIPE_COUNT + " REZEPTE EINER ANFRAGE (nicht nur dieses eine): zusammen mindestens den folgenden wöchentlichen Bedarf an lebensnotwendigen Vitaminen/Mineralstoffen eines durchschnittlichen Erwachsenen decken (grobe Richtwerte, D-A-CH/DGE-Orientierung):\n" +
       weeklyLines + "\n" +
