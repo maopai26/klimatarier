@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "0.4";
+  const APP_VERSION = "0.5";
   const LS_SETTINGS = "klimarezepte:settings:v1";
   const LS_SAVED = "klimarezepte:saved:v1";
   const LS_LAST3 = "klimarezepte:last3:v1";
@@ -13,7 +13,7 @@
   // ---------------- State ----------------
   const state = {
     settings: { personen: 2, diet: "keine", freitext: "", apiKey: "", model: "deepseek-chat" },
-    wizard: { meal: "mittagessen", calorieFood: null, proteinFood: null, nutrientKey: NUTRIENTS[0].key, nutrientFood: null },
+    wizard: { meal: "mittagessen", calorieFood: null, proteinFood: null, nutrientKey: NUTRIENTS[0].key, nutrientFood: null, zutat4: "", zutat5: "" },
     results: [],
     saved: [],
   };
@@ -129,24 +129,34 @@
   function populateCalorieDropdown() {
     const sel = q("sel-calorie");
     const list = sortedCalorieSources().filter((x) => allowedByDiet(x.food.name, state.settings.diet) && isMainFood(x.food));
+    const avg = averageValue(list);
     sel.innerHTML = "";
     list.forEach((entry) => {
       const opt = document.createElement("option");
       opt.value = entry.food.name;
-      opt.textContent = foodOptionLabel(entry, "kcal");
+      opt.textContent = co2ColorEmoji(entry.value, avg) + " " + foodOptionLabel(entry, "kcal");
       sel.appendChild(opt);
     });
     state.wizard.calorieFood = list.length ? list[0].food.name : null;
+    populateZutatDatalist("datalist-zutat4", list);
+    populateZutatDatalist("datalist-zutat5", list);
   }
+
+  const NONE_VALUE = "__keine__";
 
   function populateProteinDropdown() {
     const sel = q("sel-protein");
     const list = sortedProteinSources().filter((x) => allowedByDiet(x.food.name, state.settings.diet) && isMainFood(x.food));
+    const avg = averageValue(list);
     sel.innerHTML = "";
+    const noneOpt = document.createElement("option");
+    noneOpt.value = NONE_VALUE;
+    noneOpt.textContent = "Keine — keine Vorgabe für Zutat 2";
+    sel.appendChild(noneOpt);
     list.forEach((entry) => {
       const opt = document.createElement("option");
       opt.value = entry.food.name;
-      opt.textContent = foodOptionLabel(entry, "g Eiweiß");
+      opt.textContent = co2ColorEmoji(entry.value, avg) + " " + foodOptionLabel(entry, "g Eiweiß");
       sel.appendChild(opt);
     });
     state.wizard.proteinFood = list.length ? list[0].food.name : null;
@@ -169,14 +179,47 @@
     const meta = NUTRIENTS.find((n) => n.key === state.wizard.nutrientKey);
     q("nutrient-panel-title").textContent = "4. Zutat 3 – " + meta.label + "-Lieferant";
     const list = sortedNutrientSources(state.wizard.nutrientKey).filter((x) => allowedByDiet(x.food.name, state.settings.diet) && isMainFood(x.food));
+    const avg = averageValue(list);
     sel.innerHTML = "";
+    const noneOpt = document.createElement("option");
+    noneOpt.value = NONE_VALUE;
+    noneOpt.textContent = "Keine — keine Vorgabe für Zutat 3";
+    sel.appendChild(noneOpt);
     list.forEach((entry) => {
       const opt = document.createElement("option");
       opt.value = entry.food.name;
-      opt.textContent = foodOptionLabel(entry, meta.unit + " " + meta.label);
+      opt.textContent = co2ColorEmoji(entry.value, avg) + " " + foodOptionLabel(entry, meta.unit + " " + meta.label);
       sel.appendChild(opt);
     });
     state.wizard.nutrientFood = list.length ? list[0].food.name : null;
+  }
+
+  // Befüllt die <datalist> für Zutat 4/5 mit der (kcal-)Liste aus Zutat 1
+  // (gleiche Grundmenge: Hauptnahrungsmittel, nach CO2/kcal sortiert).
+  function populateZutatDatalist(datalistId, calorieList) {
+    const dl = q(datalistId);
+    dl.innerHTML = "";
+    calorieList.forEach((entry) => {
+      const opt = document.createElement("option");
+      opt.value = entry.food.name;
+      dl.appendChild(opt);
+    });
+  }
+
+  // Aktualisiert state.wizard.zutat4/5 und zeigt bei exaktem Treffer ein
+  // farbiges Badge mit dem CO2/kcal-Wert der gewählten Zutat.
+  function updateFreeZutat(key, text) {
+    state.wizard[key] = text;
+    const badge = q(key === "zutat4" ? "badge-zutat4" : "badge-zutat5");
+    const list = sortedCalorieSources().filter((x) => isMainFood(x.food));
+    const avg = averageValue(list);
+    const match = list.find((x) => x.food.name.toLowerCase() === text.trim().toLowerCase());
+    if (match) {
+      badge.hidden = false;
+      badge.textContent = co2ColorEmoji(match.value, avg) + " " + match.food.name + " — " + match.value.toFixed(3) + " g CO2/kcal";
+    } else {
+      badge.hidden = true;
+    }
   }
 
   function updateSavedHint() {
@@ -290,6 +333,8 @@
       zutat1: state.wizard.calorieFood,
       zutat2: state.wizard.proteinFood,
       zutat3: state.wizard.nutrientFood,
+      zutat4: state.wizard.zutat4 || "",
+      zutat5: state.wizard.zutat5 || "",
       zubereitung: raw.zubereitung || [],
       ingredientLines,
       personen,
@@ -329,22 +374,38 @@
     // Konkrete Gramm-Zielwerte für Zutat 2 & 3, damit DeepSeek GEZIELT nach
     // Rezepten mit passenden Mengenverhältnissen sucht, statt dass die App
     // das Ergebnis nachträglich korrigiert.
-    const proteinTargetG = targetGramsPerPortion(state.wizard.proteinFood, "eiweiss", true);
-    const nutrientTargetG = targetGramsPerPortion(state.wizard.nutrientFood, state.wizard.nutrientKey, false);
-    const proteinTargetLine = proteinTargetG
-      ? "- Zutat 2, Eiweißlieferant \"" + state.wizard.proteinFood + "\": plane pro PORTION (pro Person) mit ca. " + Math.round(proteinTargetG) + " g dieser Zutat — das deckt bei diesem Lebensmittel allein schon ca. 50% des Tagesbedarfs an Eiweiß (Referenz: " + EU_REF_PROTEIN_G + " g/Tag). Mehr ist in Ordnung, deutlich weniger nicht.\n"
-      : "- Zutat 2, Eiweißlieferant mit niedrigem CO2-Fußabdruck: \"" + state.wizard.proteinFood + "\"\n";
-    const nutrientTargetLine = nutrientTargetG
-      ? "- Zutat 3, " + nutrientMeta.label + "-Lieferant \"" + state.wizard.nutrientFood + "\": plane pro PORTION (pro Person) mit ca. " + Math.round(nutrientTargetG) + " g dieser Zutat — das deckt bei diesem Lebensmittel allein schon ca. 50% des Tagesbedarfs an " + nutrientMeta.label + " (Referenz: " + nutrientMeta.dailyRef + " " + nutrientMeta.unit + "/Tag). Mehr ist in Ordnung, deutlich weniger nicht.\n"
-      : "- Zutat 3, guter Lieferant für " + nutrientMeta.label + " mit niedrigem CO2-Fußabdruck: \"" + state.wizard.nutrientFood + "\"\n";
+    const proteinTargetG = state.wizard.proteinFood ? targetGramsPerPortion(state.wizard.proteinFood, "eiweiss", true) : null;
+    const nutrientTargetG = state.wizard.nutrientFood ? targetGramsPerPortion(state.wizard.nutrientFood, state.wizard.nutrientKey, false) : null;
+    let proteinTargetLine;
+    if (!state.wizard.proteinFood) {
+      proteinTargetLine = "";
+    } else if (proteinTargetG) {
+      proteinTargetLine = "- Zutat 2, Eiweißlieferant \"" + state.wizard.proteinFood + "\": plane pro PORTION (pro Person) mit ca. " + Math.round(proteinTargetG) + " g dieser Zutat — das deckt bei diesem Lebensmittel allein schon ca. 50% des Tagesbedarfs an Eiweiß (Referenz: " + EU_REF_PROTEIN_G + " g/Tag). Mehr ist in Ordnung, deutlich weniger nicht.\n";
+    } else {
+      proteinTargetLine = "- Zutat 2, Eiweißlieferant mit niedrigem CO2-Fußabdruck: \"" + state.wizard.proteinFood + "\"\n";
+    }
+    let nutrientTargetLine;
+    if (!state.wizard.nutrientFood) {
+      nutrientTargetLine = "";
+    } else if (nutrientTargetG) {
+      nutrientTargetLine = "- Zutat 3, " + nutrientMeta.label + "-Lieferant \"" + state.wizard.nutrientFood + "\": plane pro PORTION (pro Person) mit ca. " + Math.round(nutrientTargetG) + " g dieser Zutat — das deckt bei diesem Lebensmittel allein schon ca. 50% des Tagesbedarfs an " + nutrientMeta.label + " (Referenz: " + nutrientMeta.dailyRef + " " + nutrientMeta.unit + "/Tag). Mehr ist in Ordnung, deutlich weniger nicht.\n";
+    } else {
+      nutrientTargetLine = "- Zutat 3, guter Lieferant für " + nutrientMeta.label + " mit niedrigem CO2-Fußabdruck: \"" + state.wizard.nutrientFood + "\"\n";
+    }
+    const zutat4Line = state.wizard.zutat4 && state.wizard.zutat4.trim()
+      ? "- Zutat 4 (frei gewählt): \"" + state.wizard.zutat4.trim() + "\"\n" : "";
+    const zutat5Line = state.wizard.zutat5 && state.wizard.zutat5.trim()
+      ? "- Zutat 5 (frei gewählt): \"" + state.wizard.zutat5.trim() + "\"\n" : "";
 
     return "Du bist ein Ernährungs- und Kochexperte, spezialisiert auf klimafreundliche, alltagstaugliche Küche in Deutschland.\n\n" +
       "AUFGABE: Erstelle " + neededCount + " unterschiedliche Rezepte für die Mahlzeit \"" + mealLabel + "\", für genau " + state.settings.personen + " Person(en) pro Rezept (Mengenangaben in Gramm für " + state.settings.personen + " Person(en) insgesamt).\n\n" +
       "ERNÄHRUNGSWEISE: " + dietLabel + (state.settings.diet.endsWith("_nur") ? " (zwingend einhalten)." : " (falls 'bevorzugt': wenn möglich einhalten, ist aber keine harte Vorgabe).") + "\n\n" +
-      "WICHTIGE ZUTATEN MIT MENGENVORGABEN (bitte in jedem Rezept einbauen, exakte Bezeichnung beibehalten; die Gramm-Angaben unten sind eine GEZIELTE Vorgabe für die Rezeptsuche, kein grober Richtwert — suche/entwerfe Rezepte, die diese Mengen bereits von sich aus enthalten):\n" +
+      "WICHTIGE ZUTATEN MIT MENGENVORGABEN (bitte einbauen, exakte Bezeichnung beibehalten; die Gramm-Angaben sind eine GEZIELTE Vorgabe für die Rezeptsuche, kein grober Richtwert — suche/entwerfe Rezepte, die diese Mengen bereits von sich aus enthalten; fehlende Zutaten unten wurden bewusst nicht vorgegeben, dann frei ergänzen):\n" +
       "- Zutat 1, Energielieferant mit niedrigem CO2-Fußabdruck: \"" + state.wizard.calorieFood + "\" (Menge nach Rezeptbedarf).\n" +
       proteinTargetLine +
-      nutrientTargetLine + "\n" +
+      nutrientTargetLine +
+      zutat4Line +
+      zutat5Line + "\n" +
       "WEITERE VORLIEBEN/UNVERTRÄGLICHKEITEN DES NUTZERS (unbedingt beachten): " + (state.settings.freitext || "keine besonderen Angaben") + "\n\n" +
       "PORTIONSGRÖSSE: mindestens 400, höchstens 800 kcal pro Person und Mahlzeit (800 kcal ist eine harte Obergrenze, nicht überschreiten).\n" +
       "MENGEN: Verwende ausschließlich übliche, im Haushalt realistische Zutatenmengen (wie in einem normalen Kochrezept für " + state.settings.personen + " Person(en)) — keine ungewöhnlich großen oder kleinen Mengen, auch nicht um die Mengenvorgaben zu Zutat 2/3 zu erfüllen.\n" +
@@ -584,12 +645,18 @@
 
     q("save-settings-btn").addEventListener("click", saveSettingsFromForm);
     q("sel-calorie").addEventListener("change", (e) => { state.wizard.calorieFood = e.target.value; });
-    q("sel-protein").addEventListener("change", (e) => { state.wizard.proteinFood = e.target.value; });
+    q("sel-protein").addEventListener("change", (e) => {
+      state.wizard.proteinFood = e.target.value === NONE_VALUE ? null : e.target.value;
+    });
     q("sel-nutrient-type").addEventListener("change", (e) => {
       state.wizard.nutrientKey = e.target.value;
       populateNutrientSourceDropdown();
     });
-    q("sel-nutrient-source").addEventListener("change", (e) => { state.wizard.nutrientFood = e.target.value; });
+    q("sel-nutrient-source").addEventListener("change", (e) => {
+      state.wizard.nutrientFood = e.target.value === NONE_VALUE ? null : e.target.value;
+    });
+    q("inp-zutat4").addEventListener("input", (e) => updateFreeZutat("zutat4", e.target.value));
+    q("inp-zutat5").addEventListener("input", (e) => updateFreeZutat("zutat5", e.target.value));
     q("generate-btn").addEventListener("click", handleGenerate);
     q("export-all-btn").addEventListener("click", exportAll);
 

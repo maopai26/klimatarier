@@ -154,3 +154,14 @@ main.wrap { padding-top: 24px; }
 }
 .print-only-single .recipe-card { display: none; }
 .print-only-single .recipe-card.is-printing { display: block; page-break-after: auto; }
+
+/* ---------- Freie Zutat 4/5 Badge ---------- */
+.free-food-badge {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.85rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--cream);
+  border: 1px solid var(--line-strong);
+}

@@ -259,3 +259,20 @@ function isMainFood(food) {
   const src = (food.source || "").toLowerCase();
   return !src.includes("kräuter") && !src.includes("gewürze");
 }
+
+/* ---------------- Farbmarkierung nach Abweichung vom Listendurchschnitt ----------------
+   🟢 ≤50% · 🟡 50–100% · 🟠 100–150% · 🔴 150–200% · 🟣 >200% des Durchschnitts
+   der jeweils aktuell angezeigten (bereits gefilterten) Liste. */
+function averageValue(list) {
+  if (!list.length) return 0;
+  return list.reduce((s, x) => s + x.value, 0) / list.length;
+}
+function co2ColorEmoji(value, average) {
+  if (!average) return "";
+  const pct = (value / average) * 100;
+  if (pct <= 50) return "🟢";
+  if (pct <= 100) return "🟡";
+  if (pct <= 150) return "🟠";
+  if (pct <= 200) return "🔴";
+  return "🟣";
+}

@@ -81,21 +81,35 @@
 
     <div class="panel">
       <h2 class="panel-title">2. Zutat 1 – Energielieferant</h2>
-      <p class="hint">Sortiert nach CO2-Fußabdruck je Kalorie — niedrigster zuerst.</p>
+      <p class="hint">Sortiert nach CO2-Fußabdruck je Kalorie — niedrigster zuerst. Farbe zeigt die Abweichung vom Durchschnitt dieser Liste (🟢 ≤50% · 🟡 50–100% · 🟠 100–150% · 🔴 150–200% · 🟣 &gt;200%).</p>
       <select id="sel-calorie" class="text-input select-input"></select>
     </div>
 
     <div class="panel">
       <h2 class="panel-title">3. Zutat 2 – Eiweißlieferant</h2>
-      <p class="hint">Sortiert nach CO2-Fußabdruck je Gramm Eiweiß — niedrigster zuerst. Nur nährstoffdichte Produkte (Eiweißanteil am Tagesbedarf höher als Kalorienanteil am Tagesbedarf).</p>
+      <p class="hint">Sortiert nach CO2-Fußabdruck je Gramm Eiweiß — niedrigster zuerst. Nur nährstoffdichte Produkte, oder „Keine" für keine Vorgabe.</p>
       <select id="sel-protein" class="text-input select-input"></select>
     </div>
 
     <div class="panel">
       <h2 class="panel-title" id="nutrient-panel-title">4. Zutat 3 – Nährstoff-Lieferant</h2>
-      <p class="hint">Wähle zuerst einen lebensnotwendigen Nährstoff — die zweite Liste zeigt dann nährstoffdichte Lieferanten dafür, sortiert nach CO2-Fußabdruck.</p>
+      <p class="hint">Wähle zuerst einen lebensnotwendigen Nährstoff — die zweite Liste zeigt dann nährstoffdichte Lieferanten dafür, oder „Keine" für keine Vorgabe.</p>
       <select id="sel-nutrient-type" class="text-input select-input"></select>
       <select id="sel-nutrient-source" class="text-input select-input" style="margin-top:10px;"></select>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">5. Zutat 4 &amp; Zutat 5 – frei wählbar</h2>
+      <p class="hint">Optional: beliebige weitere Hauptnahrungsmittel, die im Rezept vorkommen sollen. Tippen, um in der Liste zu suchen.</p>
+      <label class="field-label" for="inp-zutat4">Zutat 4</label>
+      <input type="text" id="inp-zutat4" class="text-input" list="datalist-zutat4" placeholder="z. B. Reis, Linsen, Tofu…" autocomplete="off">
+      <datalist id="datalist-zutat4"></datalist>
+      <span class="free-food-badge" id="badge-zutat4" hidden></span>
+
+      <label class="field-label" for="inp-zutat5" style="margin-top:14px;">Zutat 5</label>
+      <input type="text" id="inp-zutat5" class="text-input" list="datalist-zutat5" placeholder="z. B. Reis, Linsen, Tofu…" autocomplete="off">
+      <datalist id="datalist-zutat5"></datalist>
+      <span class="free-food-badge" id="badge-zutat5" hidden></span>
     </div>
 
     <div class="field-actions">
