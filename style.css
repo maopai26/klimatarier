@@ -165,3 +165,28 @@ main.wrap { padding-top: 24px; }
   background: var(--cream);
   border: 1px solid var(--line-strong);
 }
+
+/* ---------- Editierbare Rezeptkarte (v0.6) ---------- */
+.card-title-input {
+  font-family: var(--display); font-size: 1.15rem; font-weight: 700; color: var(--slate);
+  border: 1.5px solid transparent; background: transparent; padding: 4px 6px; margin: 4px -6px 6px;
+  width: 100%; border-radius: 6px;
+}
+.card-title-input:hover, .card-title-input:focus { border-color: var(--line-strong); background: var(--cream); }
+.co2-callout {
+  background: rgba(74,158,95,0.12); border: 1px solid rgba(74,158,95,0.35);
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; text-align: center;
+}
+.co2-callout-label { display: block; font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.03em; }
+.co2-callout-value { display: block; font-family: var(--display); font-weight: 700; font-size: 1.5rem; color: var(--leaf-dark); margin: 2px 0; }
+.co2-callout-sub { display: block; font-size: 0.8rem; color: var(--ink-soft); }
+.ingredient-editor { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.ingredient-row { display: grid; grid-template-columns: 1fr 64px 46px 28px; gap: 6px; align-items: center; }
+.ingredient-row .ingredient-name { padding: 8px 10px; font-size: 0.88rem; }
+.ingredient-row .ingredient-name.no-match { border-color: var(--red); }
+.ingredient-row .ingredient-qty { padding: 8px 6px; font-size: 0.88rem; text-align: right; }
+.ingredient-unit { font-size: 0.78rem; color: var(--ink-soft); }
+.ingredient-remove { background: none; border: none; color: var(--red); font-size: 1.2rem; cursor: pointer; width: 28px; height: 28px; border-radius: 50%; line-height: 1; }
+.ingredient-remove:hover { background: rgba(193,80,46,0.12); }
+.add-ingredient-btn { margin-bottom: 6px; }
+.steps-editor { margin-bottom: 4px; }

@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "0.5";
+  const APP_VERSION = "0.6";
   const LS_SETTINGS = "klimarezepte:settings:v1";
   const LS_SAVED = "klimarezepte:saved:v1";
   const LS_LAST3 = "klimarezepte:last3:v1";
@@ -138,8 +138,6 @@
       sel.appendChild(opt);
     });
     state.wizard.calorieFood = list.length ? list[0].food.name : null;
-    populateZutatDatalist("datalist-zutat4", list);
-    populateZutatDatalist("datalist-zutat5", list);
   }
 
   const NONE_VALUE = "__keine__";
@@ -194,14 +192,19 @@
     state.wizard.nutrientFood = list.length ? list[0].food.name : null;
   }
 
-  // Befüllt die <datalist> für Zutat 4/5 mit der (kcal-)Liste aus Zutat 1
-  // (gleiche Grundmenge: Hauptnahrungsmittel, nach CO2/kcal sortiert).
-  function populateZutatDatalist(datalistId, calorieList) {
+  // Befüllt die <datalist>s fuer Zutat 4/5 -- bewusst UNGEFILTERT mit allen
+  // Lebensmitteln (alphabetisch), damit z.B. auch Tomaten frei waehlbar sind.
+  function populateFreeZutatDatalists() {
+    const all = allFoodsAlphabetical();
+    populateZutatDatalist("datalist-zutat4", all);
+    populateZutatDatalist("datalist-zutat5", all);
+  }
+  function populateZutatDatalist(datalistId, foodList) {
     const dl = q(datalistId);
     dl.innerHTML = "";
-    calorieList.forEach((entry) => {
+    foodList.forEach((f) => {
       const opt = document.createElement("option");
-      opt.value = entry.food.name;
+      opt.value = f.name;
       dl.appendChild(opt);
     });
   }
@@ -211,14 +214,16 @@
   function updateFreeZutat(key, text) {
     state.wizard[key] = text;
     const badge = q(key === "zutat4" ? "badge-zutat4" : "badge-zutat5");
+    const match = FOODS.find((f) => f.name.toLowerCase() === text.trim().toLowerCase());
+    if (!match) { badge.hidden = true; return; }
     const list = sortedCalorieSources().filter((x) => isMainFood(x.food));
     const avg = averageValue(list);
-    const match = list.find((x) => x.food.name.toLowerCase() === text.trim().toLowerCase());
-    if (match) {
-      badge.hidden = false;
-      badge.textContent = co2ColorEmoji(match.value, avg) + " " + match.food.name + " — " + match.value.toFixed(3) + " g CO2/kcal";
+    const value = co2PerKcal(match);
+    badge.hidden = false;
+    if (value !== null) {
+      badge.textContent = co2ColorEmoji(value, avg) + " " + match.name + " — " + value.toFixed(3) + " g CO2/kcal";
     } else {
-      badge.hidden = true;
+      badge.textContent = match.name + " — " + match.co2.toFixed(2) + " kg CO2e/kg";
     }
   }
 
@@ -233,19 +238,63 @@
   }
 
   // ---------------- Ingredient matching ----------------
+  // WICHTIG: Tabelle muss zur AKTUELLEN Datenbank (420 Lebensmittel) passen.
   const MATCH_ALIASES = {
-    "zwiebel": "Zwiebeln", "tomate": "Tomaten (regional, unbeheizter Folientunnel)",
-    "tomaten": "Tomaten (regional, unbeheizter Folientunnel)",
-    "kartoffel": "Kartoffeln (roh)", "möhre": "Karotten", "möhren": "Karotten", "karotte": "Karotten",
-    "paprika": "Paprika (rot)", "olivenöl": null, "vollkornnudeln": "Nudeln (Vollkorn, trocken)",
-    "spaghetti": "Nudeln (Vollkorn, trocken)", "nudeln": "Nudeln (Vollkorn, trocken)",
-    "haferflocken": "Haferflocken", "milch": "Kuhmilch", "ei": "Eier", "eier": "Eier",
-    "käse": "Käse (Hartkäse)", "parmesan": "Käse (Hartkäse)", "tofu": "Tofu",
-    "linsen": "Linsen (trocken)", "erbsen": "Erbsen (TK, gegart)", "mais": "Mais (Zuckermais, TK/Dose)",
-    "reis": "Reis (roh)", "apfel": "Äpfel", "äpfel": "Äpfel", "banane": "Bananen", "bananen": "Bananen",
-    "orange": "Orangen", "weißkohl": "Weißkohl (Freiland, Deutschland)", "eisbergsalat": "Eissalat (Freiland, Deutschland)",
-    "salat": "Eissalat (Freiland, Deutschland)", "brokkoli": "Brokkoli", "erdnüsse": "Erdnüsse",
-    "mandeln": "Mandeln", "rapsöl": "Rapsöl", "sojamilch": "Sojamilch", "zucker": "Zucker (Rübenzucker)",
+    "zwiebel": "Zwiebeln, frisch",
+    "tomate": "Tomaten, Durchschnitt",
+    "tomatenmark": "Tomatenmark", "kirschtomate": "Tomaten, Kirschtomaten",
+    "hafermilch": "Milch-Ersatz, Hafer", "haferdrink": "Milch-Ersatz, Hafer",
+    "mandelmilch": "Milch-Ersatz, Mandel", "kokosmilch": null, "buttermilch": null,
+    "erdnussbutter": "Erdnussbutter", "wasser": "Leitungswasser",
+    "feta": "Käse, Feta", "mozzarella": "Mozzarella", "frischkäse": "Käse, Frischkäse",
+    "hackfleisch": "Rinder-Hackfleisch", "hühnchen": "Hähnchen, Durchschnitt",
+    "speiseöl": "Rapsöl, Durchschnitt", "pflanzenöl": "Rapsöl, Durchschnitt", "öl": "Rapsöl, Durchschnitt",
+    "salz": "Speisesalz, raffiniert", "pfeffer": "Pfeffer, schwarz, gemahlen",
+    "kartoffel": "Kartoffeln, frisch",
+    "möhre": "Karotten (Möhren)", "karotte": "Karotten (Möhren)",
+    "paprika": "Paprika, frisch",
+    "vollkornnudeln": "Nudeln, Durchschnitt", "spaghetti": "Nudeln, Durchschnitt", "nudel": "Nudeln, Durchschnitt",
+    "haferflocke": "Haferflocken, Durchschnitt",
+    "milch": "Milch, Vollmilch",
+    "ei": "Ei, Durchschnitt",
+    "käse": "Käse, Durchschnitt", "parmesan": "Käse, Hartkäse (Parmesan-Art)",
+    "tofu": "Tofu, Durchschnitt",
+    "linse": "Linsen, getrocknet",
+    "erbse": "Erbsen, gefroren",
+    "mais": "Mais, Dose",
+    "reis": "Reis, Durchschnitt",
+    "apfel": "Apfel, Durchschnitt", "äpfel": "Apfel, Durchschnitt",
+    "banane": "Banane, frisch",
+    "orange": "Orange (Apfelsine)",
+    "weißkohl": "Weißkohl, frisch",
+    "eisbergsalat": "Eissalat (Freiland, Deutschland)", "salat": "Eissalat (Freiland, Deutschland)",
+    "brokkoli": "Brokkoli, frisch",
+    "erdnuss": "Erdnüsse, in Schale", "erdnüsse": "Erdnüsse, in Schale",
+    "mandel": "Mandeln",
+    "rapsöl": "Rapsöl, Durchschnitt",
+    "sojamilch": "Milch-Ersatz, Soja",
+    "zucker": "Zucker, Rohrzucker",
+    "knoblauch": "Knoblauch, frisch",
+    "ingwer": "Ingwer, frisch",
+    "spinat": "Spinat, frisch",
+    "gurke": "Salatgurke",
+    "joghurt": "Joghurt, natur",
+    "sahne": "Sahne",
+    "quark": "Quark, 40% Fett",
+    "brot": "Brot, Mischbrot",
+    "mehl": "Weizenmehl",
+    "hähnchen": "Hähnchen, Durchschnitt",
+    "rinderhack": "Rinder-Hackfleisch", "rindfleisch": "Rindfleisch, Durchschnitt", "rind": "Rindfleisch, Durchschnitt",
+    "schweinefleisch": "Schweinefleisch, Durchschnitt", "schwein": "Schweinefleisch, Durchschnitt",
+    "lachs": "Lachs (Zucht)",
+    "champignon": "Champignons, frisch", "pilz": "Champignons, frisch",
+    "kürbis": "Kürbis",
+    "lauch": "Lauch (Porree)", "porree": "Lauch (Porree)",
+    "sellerie": "Sellerie",
+    "kichererbse": "Kichererbsen, Dose",
+    "bohne": "Bohnen, weiß, Dose",
+    "butter": "Butter, Durchschnitt",
+    "olivenöl": "Olivenöl",
   };
 
   function normalizeName(s) {
@@ -255,25 +304,50 @@
       .trim();
   }
 
+  // Laengere (spezifischere) Schluessel zuerst, damit z.B. "sojamilch" vor
+  // "milch" und "tomatenmark" vor "tomate" greift.
+  const ALIAS_KEYS = Object.keys(MATCH_ALIASES).sort((a, b) => b.length - a.length);
+
+  // Wortbasierter Vergleich (kein reiner Teilstring!): verhindert, dass z.B.
+  // "Salbei" auf "ei" oder "Preiselbeeren" auf "reis" zugeordnet wird.
+  function aliasMatchesToken(token, key) {
+    if (token === key) return true;
+    for (const suf of ["n", "en", "e", "s", "er"]) if (token === key + suf) return true;
+    return key.length >= 5 && token.startsWith(key); // Komposita: Hähnchenbrust, Schweinefleisch…
+  }
+
   function findFoodMatch(ingredientName) {
-    const norm = normalizeName(ingredientName);
-    let hit = FOODS.find((f) => normalizeName(f.name) === norm);
-    if (hit) return hit;
-    for (const key in MATCH_ALIASES) {
-      if (norm === key || norm.includes(key)) {
+    const norm = normalizeName(ingredientName || "");
+    if (!norm) return null;
+    // 0) Exakter VOLLER Datenbankname (z.B. "Tomaten (Bio)") hat Vorrang.
+    const fullHit = FOODS.find((f) => f.name.toLowerCase() === ingredientName.trim().toLowerCase());
+    if (fullHit) return fullHit;
+    const tokens = norm.split(/[\s\/-]+/).filter(Boolean);
+    // 1) Alias-Tabelle (wortbasiert) -- vor der Datenbanksuche, weil mehrere
+    //    Datenbankzeilen auf denselben normalisierten Namen kollidieren.
+    for (const key of ALIAS_KEYS) {
+      if (norm === key || tokens.some((t) => aliasMatchesToken(t, key))) {
         const target = MATCH_ALIASES[key];
-        if (target === null) return null;
+        if (target === null) return null; // bewusst "nicht in Datenbank"
         const f = FOODS.find((x) => x.name === target);
         if (f) return f;
       }
     }
-    hit = FOODS.find((f) => normalizeName(f.name).includes(norm) || norm.includes(normalizeName(f.name)));
-    return hit || null;
+    // 2) Exakter Treffer gegen normalisierte Datenbanknamen
+    const exact = FOODS.find((f) => normalizeName(f.name) === norm);
+    if (exact) return exact;
+    // 3) Alle Wörter der Anfrage kommen als GANZE Wörter im Datenbanknamen vor
+    return FOODS.find((f) => {
+      const nameTokens = normalizeName(f.name).split(/[\s\/-]+/);
+      return tokens.every((t) => nameTokens.includes(t));
+    }) || null;
   }
 
-  // ---------------- Nutrition / CO2 computation for a generated recipe ----------------
+  // ---------------- Nutrition / CO2 computation ----------------
+  const MAX_INGREDIENTS = 10;
+
   function sumTotals(list) {
-    let co2 = 0, kcal = 0, fett = 0, eiweiss = 0, kh = 0;
+    let co2 = 0, kcal = 0, fett = 0, eiweiss = 0, kh = 0, zucker = 0;
     const nutrients = {};
     NUTRIENTS.forEach((n) => { nutrients[n.key] = 0; });
     list.forEach((it) => {
@@ -284,48 +358,59 @@
       fett += f * it.match.fett;
       eiweiss += f * it.match.eiweiss;
       kh += f * it.match.kh;
+      zucker += f * (it.match.zucker || 0);
       NUTRIENTS.forEach((n) => { nutrients[n.key] += f * (it.match[n.key] || 0); });
     });
-    return { co2, kcal, fett, eiweiss, kh, nutrients };
+    return { co2, kcal, fett, eiweiss, kh, zucker, nutrients };
   }
 
-  // Gramm-Zielwert, den eine Zutat pro PORTION erreichen müsste, um allein
-  // 50% des Tagesbedarfs von Eiweiß bzw. des gewählten Nährstoffs zu
-  // decken. Wird VOR der DeepSeek-Anfrage berechnet und der KI als
-  // konkrete Zahl mitgegeben (gezielte Rezeptsuche), NICHT nachträglich
-  // am Ergebnis verändert.
+  // Gramm-Zielwert pro Portion fuer 50% des Tagesbedarfs; wird VOR der
+  // DeepSeek-Anfrage berechnet und dem Prompt mitgegeben, NICHT nachtraeglich
+  // am Ergebnis veraendert.
   function targetGramsPerPortion(foodName, nutrientKey, isProtein) {
     const food = FOODS.find((f) => f.name === foodName);
     if (!food) return null;
-    const dailyRef = isProtein ? EU_REF_PROTEIN_G : NUTRIENTS.find((n) => n.key === nutrientKey).dailyRef;
-    const perGram = isProtein ? food.eiweiss / 100 : (food[nutrientKey] || 0) / 100;
-    if (!perGram) return null;
-    return (0.5 * dailyRef) / perGram;
+    return requiredGramsForHalfDaily(food, isProtein ? "eiweiss" : nutrientKey);
   }
 
-  function computeRecipe(raw, personen) {
-    const resolved = (raw.zutaten || []).map((z) => ({
-      name: z.name || "", grams: Number(z.gramm) || 0, match: findFoodMatch(z.name || ""),
+  // Berechnet ALLE abgeleiteten Werte eines Rezepts aus recipe.ingredients
+  // (Name + Gramm). Bei Erstellung UND nach jeder manuellen Bearbeitung.
+  function recomputeRecipeStats(recipe) {
+    const resolved = recipe.ingredients.map((it) => ({
+      name: it.name, grams: it.grams, match: findFoodMatch(it.name),
     }));
+    recipe.resolvedIngredients = resolved;
 
     const t = sumTotals(resolved);
-    const ingredientLines = resolved.map((it) => ({
-      text: (it.grams ? it.grams + " g " : "") + it.name,
-      matched: !!it.match,
-    }));
-
-    const co2PerPortion = t.co2 / personen;
-    const kcalPerPortion = t.kcal / personen;
-    const savingsKg = Math.max(0, AVERAGE_MEAL_CO2_KG * personen - t.co2);
-    const kmEquivalent = (savingsKg * 1000) / CAR_G_CO2_PER_KM;
+    recipe.co2Total = t.co2;
+    recipe.co2PerPortion = t.co2 / recipe.personen;
+    recipe.kcalTotal = t.kcal;
+    recipe.kcalPerPortion = t.kcal / recipe.personen;
+    recipe.fettTotal = t.fett;
+    recipe.eiweissTotal = t.eiweiss;
+    recipe.khTotal = t.kh;
+    recipe.zuckerTotal = t.zucker;
+    recipe.savingsKg = Math.max(0, AVERAGE_MEAL_CO2_KG * recipe.personen - t.co2);
+    recipe.kmEquivalent = (recipe.savingsKg * 1000) / CAR_G_CO2_PER_KM;
 
     const nutrientPctPerPortion = {};
     NUTRIENTS.forEach((n) => {
-      nutrientPctPerPortion[n.key] = Math.min(999, ((t.nutrients[n.key] / personen) / n.dailyRef) * 100);
+      nutrientPctPerPortion[n.key] = Math.min(999, ((t.nutrients[n.key] / recipe.personen) / n.dailyRef) * 100);
     });
-    const proteinPctPerPortion = Math.min(999, ((t.eiweiss / personen) / EU_REF_PROTEIN_G) * 100);
+    recipe.nutrientTotals = t.nutrients;
+    recipe.perPortion = nutrientPctPerPortion;
+    recipe.proteinPctPerPortion = Math.min(999, ((t.eiweiss / recipe.personen) / EU_REF_PROTEIN_G) * 100);
+    recipe.kcalPctPerPortion = Math.min(999, ((t.kcal / recipe.personen) / EU_REF_KCAL) * 100);
+    recipe.fettPctPerPortion = Math.min(999, ((t.fett / recipe.personen) / EU_REF_FETT_G) * 100);
+    recipe.zuckerPctPerPortion = Math.min(999, ((t.zucker / recipe.personen) / EU_REF_ZUCKER_G) * 100);
 
-    return {
+    recipe.vegan = resolved.every((it) => !it.match || animalCategory(it.match.name) === "vegan");
+    recipe.vegetarisch = resolved.every((it) => !it.match || animalCategory(it.match.name) !== "tierisch");
+    return recipe;
+  }
+
+  function computeRecipe(raw, personen) {
+    const recipe = {
       id: "r_" + Math.random().toString(36).slice(2, 10),
       title: raw.title || "Rezept",
       beschreibung: raw.beschreibung || "",
@@ -336,16 +421,35 @@
       zutat4: state.wizard.zutat4 || "",
       zutat5: state.wizard.zutat5 || "",
       zubereitung: raw.zubereitung || [],
-      ingredientLines,
+      ingredients: (raw.zutaten || []).map((z) => {
+        let g = Number(z.gramm) || 0;
+        const m = findFoodMatch(z.name || "");
+        // Sicherheitsnetz: liefert die KI bei Eiern eine Stueckzahl (<=12)
+        // statt Gramm, in Gramm umrechnen.
+        if (isEggFood(m) && g > 0 && g <= 12) g = g * EGG_WEIGHT_G;
+        return { name: z.name || "", grams: g };
+      }).slice(0, MAX_INGREDIENTS),
       personen,
-      co2Total: t.co2, co2PerPortion: co2PerPortion, kcalTotal: t.kcal, kcalPerPortion: kcalPerPortion,
-      fettTotal: t.fett, eiweissTotal: t.eiweiss, khTotal: t.kh,
-      proteinPctPerPortion: proteinPctPerPortion,
-      savingsKg: savingsKg, kmEquivalent: kmEquivalent,
-      nutrientTotals: t.nutrients, perPortion: nutrientPctPerPortion,
-      vegan: resolved.every((it) => !it.match || animalCategory(it.match.name) === "vegan"),
-      vegetarisch: resolved.every((it) => !it.match || animalCategory(it.match.name) !== "tierisch"),
+      isCustom: false,
     };
+    return recomputeRecipeStats(recipe);
+  }
+
+  // Leere Rezeptkarte fuer die freie Eingabe (ohne DeepSeek-Suche), bis zu
+  // MAX_INGREDIENTS Zutaten aus der Datenbank.
+  function createBlankRecipe() {
+    const recipe = {
+      id: "r_" + Math.random().toString(36).slice(2, 10),
+      title: "Eigenes Rezept",
+      beschreibung: "",
+      mahlzeit: state.wizard.meal,
+      zutat1: null, zutat2: null, zutat3: null, zutat4: "", zutat5: "",
+      zubereitung: [],
+      ingredients: [{ name: "", grams: 0 }],
+      personen: state.settings.personen,
+      isCustom: true,
+    };
+    return recomputeRecipeStats(recipe);
   }
 
   // ---------------- Saved recipes matching ----------------
@@ -408,7 +512,7 @@
       zutat5Line + "\n" +
       "WEITERE VORLIEBEN/UNVERTRÄGLICHKEITEN DES NUTZERS (unbedingt beachten): " + (state.settings.freitext || "keine besonderen Angaben") + "\n\n" +
       "PORTIONSGRÖSSE: mindestens 400, höchstens 800 kcal pro Person und Mahlzeit (800 kcal ist eine harte Obergrenze, nicht überschreiten).\n" +
-      "MENGEN: Verwende ausschließlich übliche, im Haushalt realistische Zutatenmengen (wie in einem normalen Kochrezept für " + state.settings.personen + " Person(en)) — keine ungewöhnlich großen oder kleinen Mengen, auch nicht um die Mengenvorgaben zu Zutat 2/3 zu erfüllen.\n" +
+      "MENGEN: Verwende ausschließlich übliche, im Haushalt realistische Zutatenmengen (wie in einem normalen Kochrezept für " + state.settings.personen + " Person(en)) — keine ungewöhnlich großen oder kleinen Mengen, auch nicht um die Mengenvorgaben zu Zutat 2/3 zu erfüllen. Mengen IMMER in Gramm angeben, auch bei Eiern (1 Ei ≈ 58 g, also 2 Eier = 116 g).\n" +
       "OBERGRENZEN PRO PORTION (nicht überschreiten): Fett ca. " + MEAL_MAX.fettG + " g, Zucker ca. " + MEAL_MAX.zuckerG + " g, Salz ca. " + MEAL_MAX.salzG + " g.\n\n" +
       "ZIEL FÜR DIE GESAMTHEIT ALLER " + RECIPE_COUNT + " REZEPTE EINER ANFRAGE (nicht nur dieses eine): zusammen mindestens den folgenden wöchentlichen Bedarf an lebensnotwendigen Vitaminen/Mineralstoffen eines durchschnittlichen Erwachsenen decken (grobe Richtwerte, D-A-CH/DGE-Orientierung):\n" +
       weeklyLines + "\n" +
@@ -494,6 +598,104 @@
     return "low";
   }
 
+  function persistIfSaved(recipe) {
+    const idx = state.saved.findIndex((r) => r.id === recipe.id);
+    if (idx > -1) { state.saved[idx] = recipe; persistSaved(); }
+  }
+
+  function renderIngredientRows(node, recipe) {
+    const box = node.querySelector(".ingredient-editor");
+    box.innerHTML = "";
+    recipe.ingredients.forEach((ing, idx) => {
+      const match = findFoodMatch(ing.name);
+      const row = document.createElement("div");
+      row.className = "ingredient-row";
+
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.className = "text-input ingredient-name";
+      nameInput.setAttribute("list", "datalist-all-foods");
+      nameInput.placeholder = "Zutat suchen…";
+      nameInput.value = ing.name;
+      if (!match && ing.name) nameInput.classList.add("no-match");
+
+      const qtyInput = document.createElement("input");
+      qtyInput.type = "number";
+      qtyInput.min = "0";
+      qtyInput.step = "any";
+      qtyInput.className = "text-input ingredient-qty";
+      qtyInput.value = ing.grams ? (match ? displayValueFromGrams(match, ing.grams) : ing.grams) : "";
+
+      const unitSpan = document.createElement("span");
+      unitSpan.className = "ingredient-unit";
+      unitSpan.textContent = match ? displayUnitFor(match) : "g";
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "ingredient-remove";
+      removeBtn.setAttribute("aria-label", "Zutat entfernen");
+      removeBtn.textContent = "×";
+
+      function applyChange() {
+        const newMatch = findFoodMatch(nameInput.value);
+        const rawQty = parseFloat(qtyInput.value) || 0;
+        ing.name = nameInput.value;
+        ing.grams = newMatch ? gramsFromDisplayValue(newMatch, rawQty) : rawQty;
+        nameInput.classList.toggle("no-match", !newMatch && !!nameInput.value);
+        unitSpan.textContent = newMatch ? displayUnitFor(newMatch) : "g";
+        recomputeRecipeStats(recipe);
+        refreshCardComputedParts(node, recipe);
+        persistIfSaved(recipe);
+      }
+      nameInput.addEventListener("change", applyChange);
+      qtyInput.addEventListener("input", applyChange);
+      removeBtn.addEventListener("click", () => {
+        recipe.ingredients.splice(idx, 1);
+        recomputeRecipeStats(recipe);
+        renderIngredientRows(node, recipe);
+        refreshCardComputedParts(node, recipe);
+        persistIfSaved(recipe);
+      });
+
+      row.appendChild(nameInput);
+      row.appendChild(qtyInput);
+      row.appendChild(unitSpan);
+      row.appendChild(removeBtn);
+      box.appendChild(row);
+    });
+
+    node.querySelector(".add-ingredient-btn").hidden = recipe.ingredients.length >= MAX_INGREDIENTS;
+  }
+
+  function addBarRow(box, label, pct, valueText) {
+    const p = Math.min(100, pct);
+    const row = document.createElement("div");
+    row.className = "nbar-row";
+    row.innerHTML = "<span>" + label + "</span><span class=\"nbar-track\"><span class=\"nbar-fill " +
+      nutrientBarClass(p) + "\" style=\"width:" + p + "%\"></span></span><span>" + valueText + "</span>";
+    box.appendChild(row);
+  }
+
+  function refreshCardComputedParts(node, recipe) {
+    node.querySelector(".card-portions").textContent = recipe.personen;
+    node.querySelector(".stat-savings-kg").textContent =
+      (recipe.savingsKg > 0 ? "+" : "") + recipe.savingsKg.toFixed(2) + " kg CO2e";
+    node.querySelector(".stat-savings-km").textContent = recipe.savingsKg > 0
+      ? "≈ " + recipe.kmEquivalent.toFixed(1) + " Auto-km eingespart"
+      : "keine Einsparung ggü. Durchschnitt";
+
+    const box = node.querySelector(".nutrient-bars");
+    box.innerHTML = "";
+    const p = recipe.personen;
+    addBarRow(box, "Kcal", recipe.kcalPctPerPortion, Math.round(recipe.kcalTotal / p) + "/" + EU_REF_KCAL);
+    addBarRow(box, "Protein", recipe.proteinPctPerPortion, (recipe.eiweissTotal / p).toFixed(0) + "/" + EU_REF_PROTEIN_G + " g");
+    addBarRow(box, "Fett", recipe.fettPctPerPortion, (recipe.fettTotal / p).toFixed(0) + "/" + EU_REF_FETT_G + " g");
+    addBarRow(box, "Zucker", recipe.zuckerPctPerPortion, (recipe.zuckerTotal / p).toFixed(0) + "/" + EU_REF_ZUCKER_G + " g");
+    NUTRIENTS.forEach((n) => {
+      addBarRow(box, n.label, recipe.perPortion[n.key], Math.round(recipe.perPortion[n.key]) + "%");
+    });
+  }
+
   function buildCardNode(recipe) {
     const tpl = q("tpl-recipe-card");
     const node = tpl.content.firstElementChild.cloneNode(true);
@@ -501,40 +703,41 @@
 
     const mealMeta = MEAL_TYPES.find((m) => m.key === recipe.mahlzeit);
     node.querySelector(".meal-tag").textContent = mealMeta ? mealMeta.label : recipe.mahlzeit;
-    node.querySelector(".card-title").textContent = recipe.title;
+
+    const titleInput = node.querySelector(".card-title-input");
+    titleInput.value = recipe.title;
+    titleInput.addEventListener("change", (e) => { recipe.title = e.target.value; persistIfSaved(recipe); });
+
     node.querySelector(".card-desc").textContent = recipe.beschreibung || "";
-    node.querySelector(".card-portions").textContent = recipe.personen;
-
-    node.querySelector(".stat-kcal").textContent = Math.round(recipe.kcalPerPortion) + " kcal";
-    node.querySelector(".stat-co2").textContent = recipe.co2PerPortion.toFixed(2) + " kg";
-    node.querySelector(".stat-co2total").textContent = recipe.co2Total.toFixed(2) + " kg";
-    node.querySelector(".stat-savings").textContent = recipe.savingsKg > 0
-      ? "≈ " + recipe.kmEquivalent.toFixed(1) + " Auto-km"
-      : "–";
-
-    const ingList = node.querySelector(".ingredient-list");
-    recipe.ingredientLines.forEach((l) => {
-      const li = document.createElement("li");
-      li.textContent = l.text + (l.matched ? "" : " (nicht in CO2-Datenbank erfasst)");
-      if (!l.matched) li.className = "no-match";
-      ingList.appendChild(li);
-    });
 
     const stepsList = node.querySelector(".steps-list");
-    (recipe.zubereitung || []).forEach((s) => {
-      const li = document.createElement("li");
-      li.textContent = s;
-      stepsList.appendChild(li);
+    const stepsEditor = node.querySelector(".steps-editor");
+    if (recipe.isCustom) {
+      stepsList.hidden = true;
+      stepsEditor.hidden = false;
+      stepsEditor.value = (recipe.zubereitung || []).join("\n");
+      stepsEditor.addEventListener("change", (e) => {
+        recipe.zubereitung = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean);
+        persistIfSaved(recipe);
+      });
+    } else {
+      (recipe.zubereitung || []).forEach((s) => {
+        const li = document.createElement("li");
+        li.textContent = s;
+        stepsList.appendChild(li);
+      });
+    }
+
+    renderIngredientRows(node, recipe);
+    node.querySelector(".add-ingredient-btn").addEventListener("click", () => {
+      if (recipe.ingredients.length >= MAX_INGREDIENTS) return;
+      recipe.ingredients.push({ name: "", grams: 0 });
+      recomputeRecipeStats(recipe);
+      renderIngredientRows(node, recipe);
+      refreshCardComputedParts(node, recipe);
     });
 
-    const barsBox = node.querySelector(".nutrient-bars");
-    NUTRIENTS.forEach((n) => {
-      const pct = Math.min(100, recipe.perPortion[n.key]);
-      const row = document.createElement("div");
-      row.className = "nbar-row";
-      row.innerHTML = "<span>" + n.label + "</span><span class=\"nbar-track\"><span class=\"nbar-fill " + nutrientBarClass(pct) + "\" style=\"width:" + pct + "%\"></span></span><span>" + Math.round(recipe.perPortion[n.key]) + "%</span>";
-      barsBox.appendChild(row);
-    });
+    refreshCardComputedParts(node, recipe);
 
     const saveBtn = node.querySelector(".save-btn");
     const isSaved = state.saved.some((r) => r.id === recipe.id);
@@ -640,6 +843,8 @@
     populateProteinDropdown();
     populateNutrientTypeDropdown();
     populateNutrientSourceDropdown();
+    populateFreeZutatDatalists();
+    populateZutatDatalist("datalist-all-foods", allFoodsAlphabetical());
     updateSavedHint();
     wireNav();
 
@@ -659,6 +864,13 @@
     q("inp-zutat5").addEventListener("input", (e) => updateFreeZutat("zutat5", e.target.value));
     q("generate-btn").addEventListener("click", handleGenerate);
     q("export-all-btn").addEventListener("click", exportAll);
+    q("add-custom-recipe-btn").addEventListener("click", () => {
+      const blank = createBlankRecipe();
+      state.results.push(blank);
+      renderResults();
+      const node = document.querySelector('.recipe-card[data-id="' + blank.id + '"]');
+      if (node) node.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
 
     document.getElementById("app-version").textContent = "v" + APP_VERSION;
 

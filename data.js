@@ -177,7 +177,70 @@ function nutrientPct100g(food, key) {
 function isNutrientDense(food, key) {
   if (!food.kcal || food.kcal <= 0) return false; // 0-kcal-Lebensmittel (Wasser, Salz) ausschließen
   const nutrientShare = key === "eiweiss" ? proteinPct100g(food) : nutrientPct100g(food, key);
-  return nutrientShare >= NUTRIENT_DENSITY_FACTOR * kcalPct100g(food);
+  if (nutrientShare < NUTRIENT_DENSITY_FACTOR * kcalPct100g(food)) return false;
+  const requiredGrams = requiredGramsForHalfDaily(food, key);
+  if (requiredGrams === null) return false;
+  return requiredGrams <= typicalMaxPortionG(food);
+}
+
+/* Gramm-Menge, die von "food" nötig wäre, um allein 50% des Tagesbedarfs
+   von "key" zu decken ("eiweiss" oder ein NUTRIENTS-Schlüssel). Von
+   data.js (Dropdown-Filter) UND app.js (DeepSeek-Prompt) gemeinsam genutzt. */
+function requiredGramsForHalfDaily(food, key) {
+  const isProtein = key === "eiweiss";
+  const dailyRef = isProtein ? EU_REF_PROTEIN_G : (NUTRIENTS.find((n) => n.key === key) || {}).dailyRef;
+  if (!dailyRef) return null;
+  const perGram = isProtein ? (food.eiweiss || 0) / 100 : (food[key] || 0) / 100;
+  if (!perGram) return null;
+  return (0.5 * dailyRef) / perGram;
+}
+
+/* Rezeptübliche Höchstmenge je Portion nach Lebensmittelkategorie
+   (musterbasiert). Verhindert unrealistische Mengen, z.B. >1kg Blattsalat
+   für 50% des Eiweißbedarfs. */
+const PORTION_MAX_RULES = [
+  ["gewürz", 100], ["pfeffer", 100], ["safran", 20], ["vanille", 20],
+  ["öl", 30], ["butter", 30], ["margarine", 30], ["kokosöl", 30],
+  ["zucker", 60], ["honig", 60], ["sirup", 60], ["marmelade", 60], ["salz", 15],
+  ["käse", 150], ["mascarpone", 100], ["ricotta", 150],
+  ["sahne", 200], ["quark", 300], ["joghurt", 300],
+  ["milch,", 400], ["milch-ersatz", 400], ["buttermilch", 400],
+  ["ei, ", 180],
+  ["nuss", 80], ["nüsse", 80], ["mandeln", 80], ["erdnüss", 80],
+  ["kerne", 80], ["samen", 80], ["tahini", 60],
+  ["fleisch", 400], ["hähnchen", 400], ["pute", 400], ["ente", 400], ["gans", 400],
+  ["kaninchen", 400], ["wachtel", 300], ["leber", 200], ["niere", 200],
+  ["herz", 200], ["zunge", 200], ["speck", 100], ["schinken", 150],
+  ["salami", 100], ["wurst", 150], ["mortadella", 100], ["chorizo", 100],
+  ["kasseler", 300], ["fisch", 400], ["lachs", 400], ["hering", 300],
+  ["makrele", 300], ["sardin", 300], ["sardelle", 100], ["kabeljau", 400],
+  ["seelachs", 400], ["scholle", 400], ["seezunge", 400], ["zander", 400],
+  ["barsch", 400], ["thunfisch", 300], ["schwertfisch", 300], ["rotbarsch", 400],
+  ["wels", 400], ["pangasius", 400], ["aal", 250], ["forelle", 400],
+  ["karpfen", 400], ["muschel", 300], ["auster", 200], ["jakobsmuschel", 250],
+  ["tintenfisch", 300], ["calamari", 300], ["oktopus", 300], ["krebs", 250],
+  ["hummer", 250], ["garnele", 250], ["surimi", 200], ["fischstäbchen", 250],
+  ["nudeln", 200], ["reis", 200], ["hafer", 150], ["gerste", 150],
+  ["dinkel", 150], ["hirse", 150], ["quinoa", 150], ["couscous", 200],
+  ["grieß", 150], ["polenta", 200], ["bulgur", 200], ["buchweizen", 150],
+  ["amaranth", 150], ["graupen", 150], ["popcorn", 100], ["cornflakes", 100],
+  ["brot", 150], ["brötchen", 150], ["baguette", 150], ["ciabatta", 150],
+  ["fladenbrot", 150], ["naan", 150], ["pita", 150], ["brezel", 100],
+  ["toast", 120], ["knäckebrot", 60], ["zwieback", 60], ["keks", 60],
+  ["blätterteig", 100], ["pizzateig", 250], ["tortilla", 150],
+  ["linsen", 150], ["kichererbsen", 200], ["bohnen", 250], ["erbsen", 250],
+  ["mais,", 250], ["tofu", 300], ["tempeh", 250], ["seitan", 250],
+  ["sojagranulat", 150], ["lupinenmehl", 100],
+  ["schokolade", 60], ["kakaopulver", 30],
+];
+const PORTION_MAX_DEFAULT = 400; // Obst, Gemüse und alles nicht Gelistete
+
+function typicalMaxPortionG(food) {
+  const n = food.name.toLowerCase();
+  for (const [keyword, max] of PORTION_MAX_RULES) {
+    if (n.includes(keyword)) return max;
+  }
+  return PORTION_MAX_DEFAULT;
 }
 
 /* Zutat-1-Kriterium: Würde der GESAMTE Tages-Kalorienbedarf (EU_REF_KCAL)
@@ -275,4 +338,26 @@ function co2ColorEmoji(value, average) {
   if (pct <= 150) return "🟠";
   if (pct <= 200) return "🔴";
   return "🟣";
+}
+
+/* Zutat 4 & 5 und der Zutaten-Editor: ALLE Lebensmittel zulassen (keine
+   Nährstoffdichte-/Fett-Zucker-/Hauptnahrungsmittel-Filterung), damit z.B.
+   auch Tomaten frei wählbar sind. Alphabetisch sortiert. */
+function allFoodsAlphabetical() {
+  return [...FOODS].sort((a, b) => a.name.localeCompare(b.name, "de"));
+}
+
+/* Eier werden in Stück statt Gramm angegeben (1 Stück ≈ 58 g). */
+const EGG_WEIGHT_G = 58;
+function isEggFood(food) {
+  return !!(food && food.name && food.name.toLowerCase().startsWith("ei,"));
+}
+function displayUnitFor(food) {
+  return isEggFood(food) ? "Stück" : "g";
+}
+function gramsFromDisplayValue(food, displayValue) {
+  return isEggFood(food) ? displayValue * EGG_WEIGHT_G : displayValue;
+}
+function displayValueFromGrams(food, grams) {
+  return isEggFood(food) ? Math.round((grams / EGG_WEIGHT_G) * 10) / 10 : grams;
 }

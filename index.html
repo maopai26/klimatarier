@@ -134,6 +134,9 @@
     </div>
     <p class="results-summary" id="results-summary"></p>
     <div class="card-grid" id="results-grid"></div>
+    <div class="field-actions">
+      <button type="button" class="btn-primary" id="add-custom-recipe-btn">+ Eigenes Rezept erstellen</button>
+    </div>
   </section>
 
   <!-- ============ GESPEICHERT ============ -->
@@ -168,21 +171,22 @@
         <span class="meal-tag"></span>
         <button type="button" class="save-btn" aria-label="Rezept speichern">♡</button>
       </div>
-      <h3 class="card-title"></h3>
+      <input type="text" class="card-title-input" placeholder="Rezeptname">
       <p class="card-desc"></p>
 
-      <div class="card-stats">
-        <div class="stat"><span class="stat-label">kcal/Portion</span><span class="stat-value stat-kcal"></span></div>
-        <div class="stat"><span class="stat-label">CO2/Portion</span><span class="stat-value stat-co2"></span></div>
-        <div class="stat"><span class="stat-label">CO2 gesamt</span><span class="stat-value stat-co2total"></span></div>
-        <div class="stat"><span class="stat-label">Ersparnis</span><span class="stat-value stat-savings"></span></div>
+      <div class="co2-callout">
+        <span class="co2-callout-label">CO2-Einsparung ggü. Durchschnitts-Mischkost</span>
+        <span class="co2-callout-value stat-savings-kg"></span>
+        <span class="co2-callout-sub stat-savings-km"></span>
       </div>
 
       <h4 class="card-sub">Zutaten (<span class="card-portions"></span> Portionen)</h4>
-      <ul class="ingredient-list"></ul>
+      <div class="ingredient-editor"></div>
+      <button type="button" class="btn-text add-ingredient-btn">+ Zutat hinzufügen</button>
 
       <h4 class="card-sub">Zubereitung</h4>
       <ol class="steps-list"></ol>
+      <textarea class="steps-editor text-area" rows="4" placeholder="Zubereitungsschritte (optional, ein Schritt pro Zeile)…" hidden></textarea>
 
       <h4 class="card-sub">Tagesbedarfsdeckung pro Portion</h4>
       <div class="nutrient-bars"></div>
@@ -193,6 +197,8 @@
     </div>
   </article>
 </template>
+
+<datalist id="datalist-all-foods"></datalist>
 
 <footer class="app-foot">
   <div class="wrap">
